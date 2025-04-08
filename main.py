@@ -14,8 +14,15 @@ from services import (
     get_notifications, mark_notification_as_read, delete_notification
 )
 from auth import authenticate_user, create_access_token, get_current_user
-
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],  
+)
 
 # Initialize the database
 init_db()
@@ -24,7 +31,12 @@ init_db()
 @app.post("/users/", response_model=UserOut)
 def create_new_user(user: UserCreate, db: Session = Depends(get_db)):
     return create_user(db, user)
-
+@app.get("/users/me")
+def read_users_me(current_user: UserOut = Depends(get_current_user)):
+    """
+    Hozirgi foydalanuvchining ma'lumotlarini qaytaradi.
+    """
+    return current_user
 @app.delete("/users/")
 def delete_current_user(current_user: UserOut = Depends(get_current_user), db: Session = Depends(get_db)):
     return delete_user(db, current_user.id)

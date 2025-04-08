@@ -42,7 +42,7 @@ class UserOut(BaseModel):
     role: UserRole
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Business Owner Schemas
 class BusinessOwnerCreate(BaseModel):
@@ -64,7 +64,7 @@ class BusinessOwnerOut(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Surprise Bag Schemas
 class SurpriseBagCreate(BaseModel):
@@ -95,15 +95,15 @@ class SurpriseBagOut(BaseModel):
     is_active: bool
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Order Schemas
 class OrderCreate(BaseModel):
     bag_id: int
-    total_price: float = Field(..., gt=0)
+    quantity: int = Field(..., gt=0)
 
 class OrderOut(BaseModel):
-    order_id: str
+    id: int
     customer_id: Optional[int]
     bag_id: int
     total_price: float
@@ -115,11 +115,11 @@ class OrderOut(BaseModel):
     feedback: Optional[str]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Notification Schemas
 class NotificationOut(BaseModel):
-    notification_id: str
+    id: int
     user_id: int
     type: NotificationType
     title: str
@@ -130,7 +130,7 @@ class NotificationOut(BaseModel):
     related_entity_id: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Token Schema
 class Token(BaseModel):

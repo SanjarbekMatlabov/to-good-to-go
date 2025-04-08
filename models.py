@@ -90,9 +90,10 @@ class SurpriseBag(Base):
 class Order(Base):
     __tablename__ = 'orders'
 
-    order_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     customer_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
     bag_id = Column(Integer, ForeignKey('surprise_bags.id', ondelete='RESTRICT'), nullable=False, index=True)
+    quantity = Column(Integer, nullable=False)  # Yangi qo‘shilgan maydon: nechta bag sotib olinganligi
     total_price = Column(Numeric(10, 2), nullable=False)
     status = Column(SQLEnum(OrderStatus, name="order_status_enum", create_type=False), default=OrderStatus.pending, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
@@ -106,15 +107,14 @@ class Order(Base):
     bag = relationship("SurpriseBag", back_populates="orders")
     notifications = relationship(
         "Notification",
-        primaryjoin="and_(Order.order_id==foreign(Notification.related_entity_id), Notification.related_entity_type=='order')",
+        primaryjoin="and_(Order.id==foreign(Notification.related_entity_id), Notification.related_entity_type=='order')",
         back_populates="order",
         cascade="all, delete-orphan"
     )
-
 class Notification(Base):
     __tablename__ = 'notifications'
 
-    notification_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
     type = Column(SQLEnum(NotificationType, name="notification_type_enum", create_type=False), nullable=False)
     title = Column(String, nullable=False)
@@ -128,7 +128,7 @@ class Notification(Base):
     user = relationship("User", back_populates="notifications")
     order = relationship(
         "Order",
-        primaryjoin="and_(foreign(Notification.related_entity_id)==Order.order_id, Notification.related_entity_type=='order')",
+        primaryjoin="and_(foreign(Notification.related_entity_id)==Order.id, Notification.related_entity_type=='order')",
         back_populates="notifications",
         uselist=False
     )

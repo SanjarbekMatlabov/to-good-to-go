@@ -86,13 +86,12 @@ def create_surprise_bag(db: Session, bag: SurpriseBagCreate, business_id: int):
     customers = db.query(User).filter(User.role == UserRole.customer).all()
     for customer in customers:
         notification = Notification(
-            notification_id=str(uuid.uuid4()),
             user_id=customer.id,
             type=NotificationType.new_bag,
             title="New Surprise Bag Available!",
             message=f"A new surprise bag '{db_bag.title}' is available at {db_business.business_name}!",
             related_entity_type=RelatedEntityType.bag,
-            related_entity_id=str(db_bag.id)
+            related_entity_id=db_bag.id  # Integer ID
         )
         db.add(notification)
     db.commit()
@@ -134,8 +133,11 @@ def create_order(db: Session, order: OrderCreate, customer_id: int):
     db_bag = get_surprise_bag(db, order.bag_id)
     if not db_bag or not db_bag.is_active:
         raise HTTPException(status_code=404, detail="Surprise bag not found or not available")
-    if db_bag.quantity_available <= db_bag.quantity_sold:
-        raise HTTPException(status_code=400, detail="Surprise bag is sold out")
+    if db_bag.quantity_available < order.quantity:
+        raise HTTPException(status_code=400, detail="Not enough surprise bags available")
+    
+    # Total narxni hisoblash
+    total_price = db_bag.discount_price * order.quantity
     
     # Generate a unique pickup code
     pickup_code = str(uuid.uuid4())[:8]
@@ -143,37 +145,38 @@ def create_order(db: Session, order: OrderCreate, customer_id: int):
         pickup_code = str(uuid.uuid4())[:8]
 
     db_order = Order(
-        order_id=str(uuid.uuid4()),
         customer_id=customer_id,
         bag_id=order.bag_id,
-        total_price=order.total_price,
+        quantity=order.quantity,
+        total_price=total_price,
         pickup_code=pickup_code,
         status=OrderStatus.pending
     )
-    db_bag.quantity_sold += 1
+    # Quantity ni yangilash
+    db_bag.quantity_sold += order.quantity
+    db_bag.quantity_available -= order.quantity
     db.add(db_order)
     db.commit()
     db.refresh(db_order)
 
     # Create a notification for the customer
     notification = Notification(
-        notification_id=str(uuid.uuid4()),
         user_id=customer_id,
         type=NotificationType.order_confirmation,
         title="Order Confirmed!",
         message=f"Your order for '{db_bag.title}' has been placed. Pickup code: {pickup_code}",
         related_entity_type=RelatedEntityType.order,
-        related_entity_id=db_order.order_id
+        related_entity_id=db_order.id
     )
     db.add(notification)
     db.commit()
     return db_order
 
-def get_order(db: Session, order_id: str):
-    return db.query(Order).filter(Order.order_id == order_id).first()
+def get_order(db: Session, order_id: int):  # String o‘rniga int
+    return db.query(Order).filter(Order.id == order_id).first()
 
-def update_order_status(db: Session, order_id: str, customer_id: int, status: OrderStatus):
-    db_order = db.query(Order).filter(Order.order_id == order_id, Order.customer_id == customer_id).first()
+def update_order_status(db: Session, order_id: int, customer_id: int, status: OrderStatus):  # String o‘rniga int
+    db_order = db.query(Order).filter(Order.id == order_id, Order.customer_id == customer_id).first()
     if not db_order:
         raise HTTPException(status_code=404, detail="Order not found or not authorized")
     db_order.status = status
@@ -183,29 +186,29 @@ def update_order_status(db: Session, order_id: str, customer_id: int, status: Or
 
     # Notify the customer about the order update
     notification = Notification(
-        notification_id=str(uuid.uuid4()),
         user_id=customer_id,
         type=NotificationType.order_update,
         title="Order Status Updated",
         message=f"Your order status has been updated to '{status}'.",
         related_entity_type=RelatedEntityType.order,
-        related_entity_id=order_id
+        related_entity_id=order_id  # Integer ID
     )
     db.add(notification)
     db.commit()
     return db_order
 
-def delete_order(db: Session, order_id: str, customer_id: int):
-    db_order = db.query(Order).filter(Order.order_id == order_id, Order.customer_id == customer_id).first()
+def delete_order(db: Session, order_id: int, customer_id: int):
+    db_order = db.query(Order).filter(Order.id == order_id, Order.customer_id == customer_id).first()
     if not db_order:
         raise HTTPException(status_code=404, detail="Order not found or not authorized")
     # Only allow deletion if the order is in pending status
     if db_order.status != OrderStatus.pending:
         raise HTTPException(status_code=400, detail="Can only delete pending orders")
-    # Decrease the quantity_sold of the associated surprise bag
+    # Decrease the quantity_sold and increase quantity_available of the associated surprise bag
     db_bag = get_surprise_bag(db, db_order.bag_id)
     if db_bag:
-        db_bag.quantity_sold -= 1
+        db_bag.quantity_sold -= db_order.quantity  # order.quantity o‘rniga db_order.quantity
+        db_bag.quantity_available += db_order.quantity  # order.quantity o‘rniga db_order.quantity
     # Update the order status to cancelled instead of hard delete
     db_order.status = OrderStatus.cancelled
     db_order.updated_at = datetime.utcnow()
@@ -213,7 +216,6 @@ def delete_order(db: Session, order_id: str, customer_id: int):
 
     # Notify the customer about the cancellation
     notification = Notification(
-        notification_id=str(uuid.uuid4()),
         user_id=customer_id,
         type=NotificationType.order_update,
         title="Order Cancelled",
@@ -229,16 +231,16 @@ def delete_order(db: Session, order_id: str, customer_id: int):
 def get_notifications(db: Session, user_id: int, skip: int = 0, limit: int = 10):
     return db.query(Notification).filter(Notification.user_id == user_id).offset(skip).limit(limit).all()
 
-def mark_notification_as_read(db: Session, notification_id: str, user_id: int):
-    db_notification = db.query(Notification).filter(Notification.notification_id == notification_id, Notification.user_id == user_id).first()
+def mark_notification_as_read(db: Session, notification_id: int, user_id: int):  # String o‘rniga int
+    db_notification = db.query(Notification).filter(Notification.id == notification_id, Notification.user_id == user_id).first()
     if not db_notification:
         raise HTTPException(status_code=404, detail="Notification not found or not authorized")
     db_notification.is_read = True
     db.commit()
     return {"message": "Notification marked as read"}
 
-def delete_notification(db: Session, notification_id: str, user_id: int):
-    db_notification = db.query(Notification).filter(Notification.notification_id == notification_id, Notification.user_id == user_id).first()
+def delete_notification(db: Session, notification_id: int, user_id: int):  # String o‘rniga int
+    db_notification = db.query(Notification).filter(Notification.id == notification_id, Notification.user_id == user_id).first()
     if not db_notification:
         raise HTTPException(status_code=404, detail="Notification not found or not authorized")
     db.delete(db_notification)
